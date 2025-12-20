@@ -1,35 +1,37 @@
-from confluent_kafka import Producer
+import itertools
+import json
+import os
 import time
-import logging
+from flask import Flask, jsonify
+from confluent_kafka import Producer
 
-logging.basicConfig(level=logging.INFO, format='%(message)s')
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+TOPIC = os.getenv("KAFKA_TOPIC", "likes")
 
-KAFKA_HOST = "localhost:9092"
-TOPIC = "fancy-topic"
+producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS})
+counter = itertools.count(1)
 
-config = {
-    "bootstrap.servers": KAFKA_HOST,
-}
+app = Flask(__name__)
 
-producer = Producer(config)
+@app.get("/health")
+def health():
+    return jsonify({"status": "ok", "topic": TOPIC})
 
-def on_delivery(err, msg):
-    if err:
-        logging.error(f"Delivery failed: {err}")
-    else:
-        logging.info(
-            f"Sent message: {msg.value().decode()}, partition: {msg.partition()}, offset: {msg.offset()}"
-        )
+@app.post("/like")
+def like():
+    payload = {
+        "order": next(counter),
+        "clicked_at": time.strftime("%Y-%m-%dT%H:%M:%S"), 
+        "ts_ms": int(time.time() * 1000),
+    }
 
-i = 0
-while True:
-    value = f"message #{i}"
-    producer.produce(
-        TOPIC,
-        key=str(i),
-        value=value,
-        callback=on_delivery
-    )
-    producer.flush()
-    i += 1
-    time.sleep(1)
+    try:
+        producer.produce(TOPIC, value=json.dumps(payload, separators=(",", ":")))
+        producer.flush(1) 
+    except Exception as exc:
+        return jsonify({"status": "error", "error": str(exc)}), 500
+
+    return jsonify({"status": "sent", "payload": payload})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5001, debug=False)

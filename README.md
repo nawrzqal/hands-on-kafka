@@ -4,7 +4,7 @@ A practical hands-on project for learning and experimenting with Apache Kafka us
 
 ## Overview
 
-This repository demonstrates a basic producer-consumer pattern with Apache Kafka. It includes a containerized Kafka setup with KRaft mode (Kafka Raft Metadata), a Python producer that continuously sends messages, and a Python consumer that reads those messages in real-time.
+This repository demonstrates a basic producer-consumer pattern with Apache Kafka. It includes a containerized Kafka setup with KRaft mode (Kafka Raft Metadata), a Flask producer API with a Streamlit UI to send "like" messages, and a Flask consumer API that prints messages to the console.
 
 ## Architecture
 
@@ -37,8 +37,12 @@ This repository demonstrates a basic producer-consumer pattern with Apache Kafka
 
 ## Project Structure
 
-- **`producer.py`** - Kafka producer that continuously sends numbered messages to the `fancy-topic` topic
-- **`consumer.py`** - Kafka consumer that subscribes to `fancy-topic` and processes incoming messages
+- **`producer.py`** - Flask API that sends like messages to the `likes` topic
+- **`consumer.py`** - Flask API that consumes the `likes` topic and logs messages
+- **`producer_ui.py`** - Streamlit UI with a "Like" button
+- **`start_kafka.bat`** - Starts Kafka via Docker Compose
+- **`create_likes_topic.bat`** - Creates the `likes` topic with 3 partitions
+- **`start_apps.bat`** - Starts producer + 3 consumers + the producer UI
 - **`docker-compose.yml`** - Docker Compose configuration for Kafka broker and Kafdrop UI
 - **`README.md`** - This file
 
@@ -46,20 +50,26 @@ This repository demonstrates a basic producer-consumer pattern with Apache Kafka
 
 - Docker and Docker Compose
 - Python 3.7+
-- `confluent-kafka` library for Python
+- Python packages: `confluent-kafka`, `flask`, `streamlit`, `requests`
 
 ## Setup & Installation
 
 ### 1. Install Python Dependencies
 
 ```bash
-pip install confluent-kafka
+pip install confluent-kafka flask streamlit requests
 ```
 
 ### 2. Start Kafka with Docker Compose
 
 ```bash
 docker-compose up -d
+```
+
+Or run the batch file:
+
+```bat
+start_kafka.bat
 ```
 
 This command starts:
@@ -74,51 +84,43 @@ Visit **Kafdrop Dashboard**: http://localhost:9000
 
 You should see the Kafka broker status and topics.
 
+### 4. Create the Likes Topic (3 Partitions)
+
+```bat
+create_likes_topic.bat
+```
+
+Or run the command directly:
+
+```bash
+docker exec kafka kafka-topics.sh --bootstrap-server localhost:9092 --create --topic likes --partitions 3 --replication-factor 1
+```
+
 ## Usage
 
-### Running the Producer
+### Quick Start (Batch File)
 
-In a terminal, run:
+```bat
+start_apps.bat
+```
+
+This opens:
+- Producer API window
+- 3 Consumer API windows (logs show consumed messages)
+- Producer UI window
+
+### Manual Start
 
 ```bash
 python producer.py
-```
-
-The producer will:
-- Connect to Kafka at `localhost:9092`
-- Send a numbered message to the `fancy-topic` topic every second
-- Log successful message deliveries with partition and offset information
-
-Example output:
-```
-Sent message: message #0, partition: 0, offset: 0
-Sent message: message #1, partition: 0, offset: 1
-Sent message: message #2, partition: 0, offset: 2
-...
-```
-
-### Running the Consumer
-
-In another terminal, run:
-
-```bash
 python consumer.py
+streamlit run producer_ui.py
 ```
 
-The consumer will:
-- Connect to Kafka at `localhost:9092`
-- Subscribe to the `fancy-topic` topic as part of the `fancy-group` consumer group
-- Read messages from the beginning (`earliest` offset reset)
-- Log received messages with key, partition, and offset information
-
-Example output:
-```
-Consumer is running...
-Received message: message #0, key: 0, partition: 0, offset: 0
-Received message: message #1, key: 1, partition: 0, offset: 1
-Received message: message #2, key: 2, partition: 0, offset: 2
-...
-```
+By default:
+- Producer UI: http://localhost:8501
+- Producer API: http://localhost:5001
+- Consumer APIs: http://localhost:5002, http://localhost:5003, http://localhost:5004
 
 ## Practicing Partitioning & Consumer Groups
 
@@ -136,22 +138,22 @@ Partitions allow Kafka to:
 #### Step 1: Create a Topic with 3 Partitions
 
 ```bash
-docker exec kafka kafka-topics.sh --bootstrap-server localhost:9092 --create --topic my-topic --partitions 3 --replication-factor 1
+docker exec kafka kafka-topics.sh --bootstrap-server localhost:9092 --create --topic likes --partitions 3 --replication-factor 1
 ```
 
-This creates a topic named `my-topic` with:
+This creates a topic named `likes` with:
 - **3 partitions** (Partition 0, 1, 2) - allows 3 concurrent consumers
 - **1 replication factor** - suitable for single-broker development setup
 
-#### Step 2: Update Producer to Send to `my-topic`
+#### Step 2: Confirm the Topic in Code
 
-Modify `producer.py` line 6:
+Ensure the `TOPIC` constant in both `producer.py` and `consumer.py` is:
 
 ```python
-TOPIC = "my-topic"  # Changed from "fancy-topic"
+TOPIC = "likes"
 ```
 
-The producer will now distribute messages across 3 partitions based on the message key (key=0, 1, 2, 3...).
+Kafka will distribute messages across 3 partitions (round-robin by default when no key is set).
 
 #### Step 3: Run Three Consumer Instances
 
@@ -164,13 +166,15 @@ python consumer.py
 
 **Terminal 2 - Consumer Instance 2:**
 ```bash
-python consumer.py
+set CONSUMER_PORT=5003 && python consumer.py
 ```
 
 **Terminal 3 - Consumer Instance 3:**
 ```bash
-python consumer.py
+set CONSUMER_PORT=5004 && python consumer.py
 ```
+
+Note: to run multiple instances on one machine, change the `CONSUMER_PORT` value.
 
 #### Step 4: Run the Producer
 
@@ -188,10 +192,7 @@ When all 3 consumers and the producer are running, you'll see:
    - Consumer 2 processes: Partition 1
    - Consumer 3 processes: Partition 2
 
-2. **Message Distribution**: Messages are distributed based on their keys:
-   - Key 0, 3, 6, 9... → Partition 0
-   - Key 1, 4, 7, 10... → Partition 1
-   - Key 2, 5, 8, 11... → Partition 2
+2. **Message Distribution**: Messages are distributed across partitions (round-robin by default when no key is set).
 
 3. **Parallel Processing**: Each consumer independently processes messages from its partition, demonstrating horizontal scaling.
 
@@ -199,19 +200,16 @@ Example output across three terminals:
 
 ```
 # Consumer 1 (Partition 0)
-Received message: message #0, key: 0, partition: 0, offset: 0
-Received message: message #3, key: 3, partition: 0, offset: 1
-Received message: message #6, key: 6, partition: 0, offset: 2
+Consumed: order=1 partition=0 clicked_at=2025-12-20 21:45:01 ts_ms=1734721501000
+Consumed: order=4 partition=0 clicked_at=2025-12-20 21:45:04 ts_ms=1734721504000
 
 # Consumer 2 (Partition 1)
-Received message: message #1, key: 1, partition: 1, offset: 0
-Received message: message #4, key: 4, partition: 1, offset: 1
-Received message: message #7, key: 7, partition: 1, offset: 2
+Consumed: order=2 partition=1 clicked_at=2025-12-20 21:45:02 ts_ms=1734721502000
+Consumed: order=5 partition=1 clicked_at=2025-12-20 21:45:05 ts_ms=1734721505000
 
 # Consumer 3 (Partition 2)
-Received message: message #2, key: 2, partition: 2, offset: 0
-Received message: message #5, key: 5, partition: 2, offset: 1
-Received message: message #8, key: 8, partition: 2, offset: 2
+Consumed: order=3 partition=2 clicked_at=2025-12-20 21:45:03 ts_ms=1734721503000
+Consumed: order=6 partition=2 clicked_at=2025-12-20 21:45:06 ts_ms=1734721506000
 ```
 
 ### Consumer Group Rebalancing
@@ -228,7 +226,7 @@ Try stopping one consumer (Ctrl+C) while the producer and other consumers are ru
 ### Verify Partitions with Kafdrop
 
 Visit **http://localhost:9000** (Kafdrop) to:
-- View the `my-topic` with 3 partitions
+- View the `likes` topic with 3 partitions
 - See which consumer group owns each partition
 - Monitor message count per partition
 - Check consumer group lag
@@ -236,12 +234,12 @@ Visit **http://localhost:9000** (Kafdrop) to:
 ### Advanced: Verify Partitions via CLI
 
 ```bash
-docker exec kafka kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic my-topic
+docker exec kafka kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic likes
 ```
 
 Expected output:
 ```
-Topic: my-topic
+Topic: likes
   Partition: 0    Leader: 0    Replicas: [0]    Isr: [0]
   Partition: 1    Leader: 0    Replicas: [0]    Isr: [0]
   Partition: 2    Leader: 0    Replicas: [0]    Isr: [0]
@@ -280,16 +278,16 @@ Topic: my-topic
 
 **Producer Settings** (`producer.py`):
 - Bootstrap servers: `localhost:9092`
-- Topic: `fancy-topic`
-- Message format: Key-value pairs (key as message number, value as text message)
-- Callback: Delivery confirmation with partition and offset tracking
+- Topic: `likes`
+- Message format: JSON payload with `order`, `clicked_at`, `ts_ms`
 
 **Consumer Settings** (`consumer.py`):
 - Bootstrap servers: `localhost:9092`
-- Topic: `fancy-topic`
-- Consumer group: `fancy-group`
+- Topic: `likes`
+- Consumer group: `likes-ui`
 - Offset reset: `earliest` (read from the beginning)
 - Poll timeout: 1.0 second
+- Logs: prints `order`, `partition`, `clicked_at`, `ts_ms`
 
 ## Monitoring
 
@@ -310,7 +308,7 @@ docker exec kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
 ### Create a Topic (if needed)
 
 ```bash
-docker exec kafka kafka-topics.sh --bootstrap-server localhost:9092 --create --topic my-topic --partitions 1 --replication-factor 1
+docker exec kafka kafka-topics.sh --bootstrap-server localhost:9092 --create --topic likes --partitions 3 --replication-factor 1
 ```
 
 ### Stop Kafka
@@ -357,7 +355,7 @@ This project covers:
 
 - Consumer uses `earliest` offset reset, so it should read all historical messages
 - Check that the topic exists: Use Kafdrop at http://localhost:9000
-- Verify both producer and consumer target the same topic name (`fancy-topic`)
+- Verify both producer and consumer target the same topic name (`likes` or your custom value)
 
 ## Next Steps
 
@@ -378,3 +376,4 @@ This project covers:
 ## License
 
 This project is open source and available for educational and learning purposes.
+
