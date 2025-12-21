@@ -16,12 +16,7 @@ Docker Compose starts these services:
 
 ```bat
 run_docker.bat
-```
-
-Or:
-
-```bash
-docker-compose up --build -d
+create_likes_topic.bat
 ```
 
 Open:
