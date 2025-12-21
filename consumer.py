@@ -6,9 +6,9 @@ from collections import deque
 from confluent_kafka import Consumer
 from flask import Flask, jsonify
 
-KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
-TOPIC = "likes"
-GROUP_ID = "likes-ui"
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+TOPIC = os.getenv("KAFKA_TOPIC", "likes")
+GROUP_ID = os.getenv("KAFKA_GROUP_ID", "likes-ui")
 
 messages = deque(maxlen=200)
 

@@ -1,7 +1,9 @@
+import os
+
 import requests
 import streamlit as st
 
-PRODUCER_API_URL = "http://localhost:5001"
+PRODUCER_API_URL = os.getenv("PRODUCER_API_URL", "http://localhost:5001")
 
 st.set_page_config(page_title="Likes Producer", layout="centered")
 st.title("Likes Producer")
